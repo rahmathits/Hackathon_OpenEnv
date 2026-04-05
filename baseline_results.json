@@ -1,0 +1,67 @@
+{
+  "model": "Qwen/Qwen2.5-72B-Instruct",
+  "dataset": "sample_sales_data.csv",
+  "task_results": [
+    {
+      "task": "detect_missing",
+      "difficulty": "easy",
+      "steps": 10,
+      "total_reward": 3.1,
+      "history": [
+        "clean_data",
+        "eda",
+        "feature_engineering",
+        "train_model",
+        "eda",
+        "eda",
+        "eda",
+        "eda",
+        "eda",
+        "eda"
+      ],
+      "penalties": 0,
+      "avg_reward": 3.1
+    },
+    {
+      "task": "find_correlation",
+      "difficulty": "medium",
+      "steps": 10,
+      "total_reward": 3.1,
+      "history": [
+        "clean_data",
+        "eda",
+        "feature_engineering",
+        "train_model",
+        "eda",
+        "eda",
+        "eda",
+        "eda",
+        "eda",
+        "eda"
+      ],
+      "penalties": 0,
+      "avg_reward": 3.1
+    },
+    {
+      "task": "generate_insight",
+      "difficulty": "hard",
+      "steps": 10,
+      "total_reward": 3.1,
+      "history": [
+        "clean_data",
+        "eda",
+        "feature_engineering",
+        "train_model",
+        "eda",
+        "eda",
+        "eda",
+        "eda",
+        "eda",
+        "eda"
+      ],
+      "penalties": 0,
+      "avg_reward": 3.1
+    }
+  ],
+  "baseline_score": 3.1
+}

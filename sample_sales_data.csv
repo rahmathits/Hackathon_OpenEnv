@@ -1,0 +1,14 @@
+
+Product,Category,Sales,Profit,Region,Discount
+Laptop,Electronics,1200,240,West,0.1
+Smartphone,Electronics,800,160,East,0.15
+Headphones,Electronics,150,45,North,0.05
+Coffee Maker,Appliances,250,50,South,0.2
+Blender,Appliances,100,20,West,0.1
+Microwave,Appliances,300,60,East,0.12
+Desk Chair,Furniture,450,135,North,0.08
+Bookshelf,Furniture,200,60,South,0.05
+Office Desk,Furniture,600,180,West,0.15
+Running Shoes,Sports,180,54,East,0.1
+Tennis Racket,Sports,220,66,North,0.07
+Basketball,Sports,100,30,South,0.05
