@@ -12,10 +12,16 @@ except Exception as e:
 from models import EdaOpenenvAction, EdaOpenenvObservation
 from server.EDA_OpenEnv_environment import EdaOpenenvEnvironment
 
+
+def env_factory() -> EdaOpenenvEnvironment:
+    """Factory function — create_app calls this to create new env instances."""
+    return EdaOpenenvEnvironment()
+
+
 app = create_app(
-    EdaOpenenvEnvironment,
-    EdaOpenenvAction,
-    EdaOpenenvObservation,
+    env=env_factory,
+    action_cls=EdaOpenenvAction,
+    observation_cls=EdaOpenenvObservation,
     env_name="EDA_OpenEnv",
     max_concurrent_envs=1,
 )

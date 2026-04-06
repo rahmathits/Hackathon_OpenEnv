@@ -4,7 +4,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import random
 import pandas as pd
-from typing import Tuple, Dict, Any
+from typing import Optional, Dict, Any
+
+from openenv.core import Environment
 
 from models import EdaOpenenvAction, EdaOpenenvObservation, Reward
 from pipeline import validate_action, apply_order_bonus, PIPELINE
@@ -29,41 +31,66 @@ _DEFAULT_DF = pd.DataFrame({
 })
 
 
-class EdaOpenenvEnvironment:
+class EdaOpenenvEnvironment(Environment[EdaOpenenvAction, EdaOpenenvObservation, Dict[str, Any]]):
+
+    SUPPORTS_CONCURRENT_SESSIONS = True
 
     def __init__(self, df: pd.DataFrame = None, max_steps: int = 10):
-        self.df            = df if df is not None else _DEFAULT_DF.copy()
-        self.max_steps     = max_steps
-        self.history       = []
-        self.step_history  = []
-        self.steps         = 0
-        self.done          = False
-        self.task          = None
+        super().__init__()
+        self.df                = df if df is not None else _DEFAULT_DF.copy()
+        self.max_steps         = max_steps
+        self.history           = []
+        self.step_history      = []
+        self._steps            = 0
+        self._done             = False
+        self._task             = random.choice(TASKS).copy()  # auto-init so step() works before reset()
         self.cumulative_reward = 0.0
 
-    def reset(self) -> EdaOpenenvObservation:
-        self.history       = []
-        self.step_history  = []
-        self.steps         = 0
-        self.done          = False
+    # ─────────────────────────────────────────
+    # RESET
+    # ─────────────────────────────────────────
+    def reset(
+        self,
+        seed: Optional[int] = None,
+        episode_id: Optional[str] = None,
+        **kwargs,
+    ) -> EdaOpenenvObservation:
+        # Handle dict input from web UI
+        if isinstance(seed, dict):
+            data       = seed
+            seed       = data.get("seed", None)
+            episode_id = data.get("episode_id", None)
+        elif isinstance(seed, str):
+            seed = None
+        self._reset_rubric()
+        self.history           = []
+        self.step_history      = []
+        self._steps            = 0
+        self._done             = False
         self.cumulative_reward = 0.0
-        self.task          = random.choice(TASKS).copy()
-        return self._get_obs()
+        self._task             = random.choice(TASKS).copy()
+        return self._get_obs(reward=None, done=False)
 
-    def _get_obs(self) -> EdaOpenenvObservation:
-        return EdaOpenenvObservation(
-            dataset_head=self.df.head().to_dict(orient="records"),
-            columns=list(self.df.columns),
-            stats=self.df.describe().to_dict(),
-            history=self.history.copy(),
-            task=self.task["name"],
-            objective=self.task["objective"],
-            difficulty=self.task["difficulty"],
-        )
-
-    def step(self, action: EdaOpenenvAction) -> Tuple[EdaOpenenvObservation, float, bool, dict]:
-        if self.done:
-            return self._get_obs(), 0.0, True, {"info": "Episode done. Call reset()."}
+    # ─────────────────────────────────────────
+    # STEP
+    # ─────────────────────────────────────────
+    def step(
+        self,
+        action: EdaOpenenvAction,
+        timeout_s: Optional[float] = None,
+        **kwargs,
+    ) -> EdaOpenenvObservation:
+        # Handle dict input from web UI — extract action_type from any dict shape
+        if isinstance(action, dict):
+            action_type = (
+                action.get("action_type")
+                or action.get("action")
+                or action.get("message")
+                or "clean_data"
+            )
+            action = EdaOpenenvAction(action_type=action_type)
+        if self._done:
+            return self._get_obs(reward=0.0, done=True)
 
         # Pipeline ordering check
         penalty = validate_action(action.action_type, self.step_history)
@@ -74,16 +101,11 @@ class EdaOpenenvEnvironment:
                 "is_penalty": True,
                 "done":       False,
             })
-            self.steps += 1
-            return self._get_obs(), penalty.score, False, {
-                "feedback":   penalty.feedback,
-                "is_penalty": True,
-            }
+            self._steps += 1
+            return self._get_obs(reward=penalty.score, done=False)
 
         # Compute reward
         reward_obj = self._compute_reward(action)
-
-        # Apply pipeline ordering bonus
         reward_obj = apply_order_bonus(action.action_type, self.step_history, reward_obj)
 
         self.history.append(action.action_type)
@@ -91,52 +113,81 @@ class EdaOpenenvEnvironment:
             "action":     action.action_type,
             "reward":     reward_obj.score,
             "is_penalty": False,
-            "done":       self.done,
+            "done":       self._done,
         })
-        self.steps += 1
-        self.cumulative_reward = round(self.cumulative_reward + reward_obj.score, 4)
+        self._steps            += 1
+        self.cumulative_reward  = round(self.cumulative_reward + reward_obj.score, 4)
 
-        if self.steps >= self.max_steps:
-            self.done = True
+        if self._steps >= self.max_steps:
+            self._done = True
 
-        return self._get_obs(), reward_obj.score, self.done, {
-            "task":              self.task["name"],
-            "feedback":          reward_obj.feedback,
-            "cumulative_reward": self.cumulative_reward,
-        }
+        obs = self._get_obs(reward=reward_obj.score, done=self._done)
+        obs.reward = self._apply_rubric(action, obs) or reward_obj.score
+        return obs
+
+    # ─────────────────────────────────────────
+    # STATE — must be a property
+    # ─────────────────────────────────────────
+    @property
+    def state(self) -> Dict[str, Any]:
+        from openenv.core.env_server.http_server import State
+
+        class EdaState(State):
+            task:              str | None = None
+            objective:         str | None = None
+            difficulty:        str | None = None
+            max_steps:         int        = 10
+            history:           list       = []
+            cumulative_reward: float      = 0.0
+            done:              bool       = False
+
+        return EdaState(
+            episode_id=None,
+            step_count=self._steps,
+            task=self._task["name"] if self._task else None,
+            objective=self._task["objective"] if self._task else None,
+            difficulty=self._task["difficulty"] if self._task else None,
+            max_steps=self.max_steps,
+            history=self.history.copy(),
+            cumulative_reward=self.cumulative_reward,
+            done=self._done,
+        )
+
+    # ─────────────────────────────────────────
+    # INTERNAL HELPERS
+    # ─────────────────────────────────────────
+    def _get_obs(self, reward: float = None, done: bool = False) -> EdaOpenenvObservation:
+        return EdaOpenenvObservation(
+            done=done,
+            reward=reward,
+            dataset_head=self.df.head().to_dict(orient="records"),
+            columns=list(self.df.columns),
+            stats=self.df.describe().to_dict(),
+            history=self.history.copy(),
+            task=self._task["name"] if self._task else "",
+            objective=self._task["objective"] if self._task else "",
+            difficulty=self._task["difficulty"] if self._task else "",
+        )
 
     def _compute_reward(self, action: EdaOpenenvAction) -> Reward:
         if action.action_type in self.history:
-            return Reward(score=0.1, feedback="Repeated action — try something new.", is_penalty=True)
+            return Reward(score=0.1, feedback="Repeated action.", is_penalty=True)
 
-        expected = TASK_ACTION_MAP.get(self.task["name"])
-
+        expected = TASK_ACTION_MAP.get(self._task["name"])
         if action.action_type == expected:
             grade, feedback = grade_task(
-                task_name=self.task["name"],
+                task_name=self._task["name"],
                 df=self.df,
                 history=self.history + [action.action_type],
                 result=None,
             )
             if grade >= 1.0:
-                self.done = True
-                return Reward(score=1.0, feedback=f"✅ Task complete! {feedback}", is_penalty=False)
+                self._done = True
+                return Reward(score=1.0, feedback=f"Task complete! {feedback}", is_penalty=False)
             return Reward(score=round(grade, 4), feedback=feedback, is_penalty=False)
 
         return Reward(
             score=0.2,
-            feedback=f"'{action.action_type}' valid but not relevant to task '{self.task['name']}' (expected '{expected}').",
+            feedback=f"'{action.action_type}' valid but not relevant to task '{self._task['name']}'.",
             is_penalty=False,
         )
-
-    def state(self) -> Dict[str, Any]:
-        return {
-            "task":              self.task["name"] if self.task else None,
-            "objective":         self.task["objective"] if self.task else None,
-            "difficulty":        self.task["difficulty"] if self.task else None,
-            "steps":             self.steps,
-            "max_steps":         self.max_steps,
-            "history":           self.history.copy(),
-            "cumulative_reward": self.cumulative_reward,
-            "done":              self.done,
-        }

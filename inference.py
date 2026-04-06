@@ -10,7 +10,7 @@ Usage:
     set API_BASE_URL=https://router.huggingface.co/v1
     set MODEL_NAME=Qwen/Qwen2.5-72B-Instruct
     set HF_TOKEN=hf_...
-    python inference.py --csv data/sample.csv
+    python inference.py --csv sample.csv
 """
 
 import os

@@ -14,7 +14,7 @@ ENV PATH="/app:${PATH}"
 ENV PYTHONPATH="/app"
 ENV API_BASE_URL="https://router.huggingface.co/v1"
 ENV MODEL_NAME=""
-ENV ENABLE_WEB_INTERFACE = true
+ENV ENABLE_WEB_INTERFACE=true
 
 WORKDIR /app
 
