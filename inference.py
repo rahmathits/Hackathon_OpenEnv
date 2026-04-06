@@ -10,7 +10,7 @@ Usage:
     set API_BASE_URL=https://router.huggingface.co/v1
     set MODEL_NAME=Qwen/Qwen2.5-72B-Instruct
     set HF_TOKEN=hf_...
-    python inference.py --csv sample.csv
+    python inference.py --csv data/sample.csv
 """
 
 import os
@@ -115,8 +115,10 @@ What is the single best action to take next?"""
 def run_episode(env, agent, task_override=None, verbose=True) -> dict:
     obs = env.reset()
     if task_override:
-        env.task = task_override.copy()
+        env._task = task_override.copy()
         obs = env._get_obs()
+
+    from models import Reward
 
     history      = []
     total_reward = 0.0
@@ -124,9 +126,9 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
 
     if verbose:
         print(f"\n{'─'*60}")
-        print(f"  Task      : {obs.task}")
-        print(f"  Objective : {env.task['objective']}")
-        print(f"  Difficulty: {env.task['difficulty']}")
+        print(f"  Task      : {obs._task}")
+        print(f"  Objective : {env._task['objective']}")
+        print(f"  Difficulty: {env._task['difficulty']}")
         print(f"{'─'*60}")
 
     while True:
@@ -139,10 +141,13 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
             if verbose:
                 print(f"  Step {step+1:02d} | {action_type:<22} | score={reward.score:.4f} | ⚠️  {reward.feedback}")
         else:
-            action         = Action(action_type=action_type)
-            obs, reward_score, done, info = env.step(action)
-            from models import Reward
-            reward = apply_order_bonus(action_type, history, Reward(score=reward_score, feedback=info.get("feedback",""), is_penalty=False))
+            action = Action(action_type=action_type)
+            obs    = env.step(action)
+            done   = obs.done
+            reward = apply_order_bonus(
+                action_type, history,
+                Reward(score=obs.reward or 0.0, feedback="", is_penalty=False)
+            )
             if verbose:
                 status = "✅ DONE" if done else "▶️ "
                 print(f"  Step {step+1:02d} | {action_type:<22} | score={reward.score:.4f} | {status}")
@@ -158,6 +163,10 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
         })
         total_reward += reward.score
         step         += 1
+
+        # Update obs for next select_action call
+        if penalty is None:
+            pass  # obs already updated from env.step()
 
         if done or step >= env.max_steps:
             break
