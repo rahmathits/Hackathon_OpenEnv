@@ -6,7 +6,7 @@
       "task": "detect_missing",
       "difficulty": "easy",
       "steps": 10,
-      "total_reward": 3.1,
+      "total_reward": 3.1134,
       "history": [
         "clean_data",
         "eda",
@@ -20,13 +20,13 @@
         "eda"
       ],
       "penalties": 0,
-      "avg_reward": 3.1
+      "avg_reward": 3.1134
     },
     {
       "task": "find_correlation",
       "difficulty": "medium",
       "steps": 10,
-      "total_reward": 3.1,
+      "total_reward": 3.106,
       "history": [
         "clean_data",
         "eda",
@@ -40,13 +40,13 @@
         "eda"
       ],
       "penalties": 0,
-      "avg_reward": 3.1
+      "avg_reward": 3.106
     },
     {
       "task": "generate_insight",
       "difficulty": "hard",
       "steps": 10,
-      "total_reward": 3.1,
+      "total_reward": 3.084,
       "history": [
         "clean_data",
         "eda",
@@ -60,8 +60,8 @@
         "eda"
       ],
       "penalties": 0,
-      "avg_reward": 3.1
+      "avg_reward": 3.084
     }
   ],
-  "baseline_score": 3.1
+  "baseline_score": 3.1011
 }

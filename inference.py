@@ -126,9 +126,9 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
 
     if verbose:
         print(f"\n{'─'*60}")
-        print(f"  Task      : {obs._task}")
-        print(f"  Objective : {env._task['objective']}")
-        print(f"  Difficulty: {env._task['difficulty']}")
+        print(f"  Task      : {obs.task}")
+        print(f"  Objective : {obs.objective}")
+        print(f"  Difficulty: {obs.difficulty}")
         print(f"{'─'*60}")
 
     while True:
@@ -176,8 +176,8 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
         print(f"  Finished | steps={step} | total_reward={total_reward:.4f}")
 
     return {
-        "task":         env.task["name"],
-        "difficulty":   env.task["difficulty"],
+        "task":         env._task["name"],
+        "difficulty":   env._task["difficulty"],
         "steps":        step,
         "total_reward": round(total_reward, 4),
         "history":      [h["action"] for h in history],
