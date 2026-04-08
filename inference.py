@@ -25,8 +25,8 @@ from models import EdaOpenenvAction as Action
 from pipeline import validate_action, apply_order_bonus, PIPELINE, get_completed_actions
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-API_KEY      = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-MODEL_NAME   = os.getenv("MODEL_NAME")
+API_KEY      = os.getenv("HF_TOKEN") or os.getenv("API_KEY", "")
+MODEL_NAME   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 
 MAX_STEPS   = 10
 TEMPERATURE = 0.0
@@ -58,11 +58,12 @@ class LLMAgent:
 
     def __init__(self):
         if not API_KEY:
-            raise EnvironmentError("HF_TOKEN not set. Run: set HF_TOKEN=hf_...")
+            print("  [warn] HF_TOKEN not set — API calls may fail. Set HF_TOKEN=hf_...")
         if not MODEL_NAME:
-            raise EnvironmentError("MODEL_NAME not set. Run: set MODEL_NAME=Qwen/Qwen2.5-72B-Instruct")
-        self.client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-        self.model  = MODEL_NAME
+            print("  [warn] MODEL_NAME not set — using default Qwen/Qwen2.5-72B-Instruct")
+
+        self.client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "dummy")
+        self.model  = MODEL_NAME or "Qwen/Qwen2.5-72B-Instruct"
         print(f"  API Base : {API_BASE_URL}")
         print(f"  Model    : {self.model}")
 
@@ -94,8 +95,9 @@ What is the single best action to take next?"""
             )
             raw = completion.choices[0].message.content or ""
         except Exception as exc:
-            print(f"  [warn] Model request failed: {exc}")
-            raw = ""
+            print(f"  [warn] Model request failed: {exc}. Using pipeline fallback.")
+            # Fallback: just follow the pipeline in order
+            return next_pipeline_step if next_pipeline_step != "pipeline complete" else "missing", "fallback — API unavailable"
 
         try:
             clean  = re.sub(r"```json|```", "", raw).strip()
