@@ -185,11 +185,14 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
             break
 
     # Normalise total_reward to strictly (0, 1) for validator
-    # Divide by max possible reward (number of steps * max step reward)
-    max_possible = step * 0.9999 if step > 0 else 1
-    normalised_score = total_reward / max_possible if max_possible > 0 else 0.5
-    # Clamp strictly between 0 and 1 exclusive
-    normalised_score = round(max(0.0001, min(0.9999, normalised_score)), 4)
+    # Use sigmoid-like scaling to guarantee strict bounds
+    if total_reward <= 0:
+        normalised_score = 0.1000
+    else:
+        max_possible = step * 0.9999 if step > 0 else 1
+        raw = total_reward / max_possible
+        # Clamp strictly — never touch 0.0 or 1.0
+        normalised_score = round(max(0.1000, min(0.9000, raw)), 4)
 
     # Print [END] block — required by validator
     print(f"[END]")

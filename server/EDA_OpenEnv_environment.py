@@ -173,6 +173,9 @@ class EdaOpenenvEnvironment(Environment[EdaOpenenvAction, EdaOpenenvObservation,
     # INTERNAL HELPERS
     # ─────────────────────────────────────────
     def _get_obs(self, reward: float = None, done: bool = False) -> EdaOpenenvObservation:
+        # Clamp reward strictly between 0 and 1 exclusive if provided
+        if reward is not None:
+            reward = round(max(0.0001, min(0.9999, reward)), 4)
         return EdaOpenenvObservation(
             done=done,
             reward=reward,
