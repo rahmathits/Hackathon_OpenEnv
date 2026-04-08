@@ -187,17 +187,30 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="EDA OpenEnv — Inference Script")
-    parser.add_argument("--csv",      required=True,        help="Path to CSV dataset")
+    parser.add_argument("--csv",      required=False, default=None, help="Path to CSV dataset (optional — uses built-in sample if not provided)")
     parser.add_argument("--steps",    type=int, default=10, help="Max steps per episode")
     parser.add_argument("--episodes", type=int, default=1,  help="Runs per task")
     parser.add_argument("--quiet",    action="store_true",  help="Suppress per-step output")
     args = parser.parse_args()
 
-    df = pd.read_csv(args.csv)
+    # Use provided CSV or fall back to built-in sample dataset
+    if args.csv:
+        df           = pd.read_csv(args.csv)
+        dataset_name = args.csv
+    else:
+        df = pd.DataFrame({
+            "age":        [25, 30, None, 45, 22, 35, 28, None, 50, 33],
+            "salary":     [50000, 60000, 70000, None, 45000, 80000, 55000, 62000, None, 72000],
+            "score":      [88, 92, 75, 85, 90, 78, 95, 82, 88, 91],
+            "experience": [2, 5, 8, 15, 1, 10, 3, 6, 20, 9],
+            "department": ["HR", "IT", "IT", "Finance", "HR", "IT", "Finance", "HR", "IT", "Finance"],
+        })
+        dataset_name = "built-in sample dataset"
+
     print(f"\n{'═'*60}")
     print(f"  EDA OpenEnv — Inference Script")
     print(f"{'═'*60}")
-    print(f"  Dataset       : {args.csv} ({df.shape[0]} rows × {df.shape[1]} cols)")
+    print(f"  Dataset       : {dataset_name} ({df.shape[0]} rows × {df.shape[1]} cols)")
     print(f"  Episodes/task : {args.episodes}")
 
     env   = EDAEnv(df, max_steps=args.steps)
@@ -232,7 +245,7 @@ def main() -> None:
     print(f"{'═'*60}\n")
 
     with open("baseline_results.json", "w") as f:
-        json.dump({"model": MODEL_NAME, "dataset": args.csv, "task_results": all_results, "baseline_score": baseline}, f, indent=2)
+        json.dump({"model": MODEL_NAME, "dataset": dataset_name, "task_results": all_results, "baseline_score": baseline}, f, indent=2)
     print("Results saved → baseline_results.json\n")
 
 
