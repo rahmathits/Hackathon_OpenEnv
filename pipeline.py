@@ -1,28 +1,28 @@
-import random
 from models import Reward
 
 # Fixed linear order — each action must be completed before the next
 PIPELINE = ["clean_data", "eda", "feature_engineering", "train_model"]
 
-# Positive reward for correct in-order action (first time only)
-# Scales by pipeline position: clean_data → 0.25 ... train_model → 1.0
-ORDER_BONUSES = {action: round((i + 1) / len(PIPELINE), 2) for i, action in enumerate(PIPELINE)}
-
-# Penalty ranges for out-of-order actions (negative, randomised per violation)
-# More steps skipped = larger penalty range
-PENALTY_RANGES = {
-    1: (-0.40, -0.20),   # skip 1 step  → random between -0.40 and -0.20
-    2: (-0.65, -0.40),   # skip 2 steps → random between -0.65 and -0.40
-    3: (-0.90, -0.65),   # skip 3 steps → random between -0.90 and -0.65
+# Pipeline ordering bonuses — strictly between 0 and 1
+ORDER_BONUSES = {
+    "clean_data":          0.2500,
+    "eda":                 0.5000,
+    "feature_engineering": 0.7500,
+    "train_model":         0.9500,   # was 1.0 — must be strictly less than 1
 }
 
-# Positive bonus range for correct in-order actions (adds slight randomness)
-BONUS_JITTER = 0.05   # ± jitter applied on top of the fixed bonus
+# Out-of-order penalties — fixed, deterministic, scale by steps skipped
+# These penalise wrong order during training (not used in final grading)
+SKIP_PENALTIES = {
+    1: -0.25,
+    2: -0.50,
+    3: -0.75,
+}
 
 
 def _clamp(value: float, low: float = -1.0, high: float = 1.0) -> float:
-    """Clamp value to [low, high] range."""
-    return round(max(low, min(high, value)), 4)
+    """Clamp value to (low, high) range — strictly exclusive of boundaries."""
+    return round(max(low + 0.0001, min(high - 0.0001, value)), 4)
 
 
 def get_completed_actions(history: list) -> list:
@@ -34,10 +34,10 @@ def validate_action(action_type: str, history: list) -> Reward | None:
     """
     Check whether action_type is valid given the current history.
 
-    Returns a penalty Reward with a RANDOM negative score if out-of-order.
-    Returns None if valid — env will score it, then apply_order_bonus adds bonus.
+    Returns a deterministic penalty Reward if out-of-order.
+    Returns None if valid — env scores it, then apply_order_bonus adds bonus.
 
-    Penalty is randomised so graders never return the same score twice.
+    Penalties are fixed and deterministic — same input always gives same output.
     """
     if action_type not in PIPELINE:
         return None
@@ -54,15 +54,13 @@ def validate_action(action_type: str, history: list) -> Reward | None:
     if not missing:
         return None  # All prerequisites met
 
-    # Random penalty — scales with number of steps skipped
-    steps_skipped  = min(len(missing), 3)
-    low, high      = PENALTY_RANGES[steps_skipped]
-    penalty        = round(random.uniform(low, high), 4)
-    missing_str    = " → ".join(missing)
+    steps_skipped = min(len(missing), 3)
+    penalty       = SKIP_PENALTIES[steps_skipped]
+    missing_str   = " → ".join(missing)
 
     feedback = (
         f"⚠️ Out-of-order: '{action_type}' requires [{missing_str}] first. "
-        f"Penalty: {penalty:.4f}"
+        f"Penalty: {penalty:.2f}"
     )
     return Reward(score=penalty, feedback=feedback, is_penalty=True)
 
@@ -70,12 +68,11 @@ def validate_action(action_type: str, history: list) -> Reward | None:
 def apply_order_bonus(action_type: str, history: list, reward) -> Reward:
     """
     Called after a successful env.step() to apply a positive ordering bonus.
+    Bonuses are fixed and deterministic — same action always gives same bonus.
 
-    - First time in-order: fixed bonus + small random jitter → always positive
+    - First time in-order: fixed bonus from ORDER_BONUSES
     - Repeated action: pass through env score unchanged
     - Non-pipeline action: pass through unchanged
-
-    Bonus is randomised slightly so graders never return the same score twice.
     """
     # Normalise raw float to Reward object
     if isinstance(reward, (int, float)):
@@ -94,15 +91,12 @@ def apply_order_bonus(action_type: str, history: list, reward) -> Reward:
             is_penalty=False,
         )
 
-    # First time in-order — apply bonus with small random jitter
-    base_bonus  = ORDER_BONUSES[action_type]
-    jitter      = round(random.uniform(-BONUS_JITTER, BONUS_JITTER), 4)
-    final_score = _clamp(base_bonus + jitter, low=0.01, high=1.0)  # always positive
-
+    # First time in-order — apply fixed deterministic bonus
+    final_score  = _clamp(ORDER_BONUSES[action_type], low=0.0, high=1.0)
     new_feedback = (
-        f"✅ In-order +{final_score:.4f} | {reward.feedback}"
+        f"✅ In-order +{final_score:.2f} | {reward.feedback}"
         if reward.feedback
-        else f"✅ In-order +{final_score:.4f}"
+        else f"✅ In-order +{final_score:.2f}"
     )
     return Reward(score=final_score, feedback=new_feedback, is_penalty=False)
 

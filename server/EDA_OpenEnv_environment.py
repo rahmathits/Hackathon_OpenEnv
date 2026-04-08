@@ -62,13 +62,29 @@ class EdaOpenenvEnvironment(Environment[EdaOpenenvAction, EdaOpenenvObservation,
             episode_id = data.get("episode_id", None)
         elif isinstance(seed, str):
             seed = None
+
         self._reset_rubric()
         self.history           = []
         self.step_history      = []
         self._steps            = 0
         self._done             = False
         self.cumulative_reward = 0.0
-        self._task             = random.choice(TASKS).copy()
+
+        # Deterministic task selection:
+        # - If seed provided → always picks same task for same seed
+        # - If task_name in kwargs → use that specific task
+        # - Otherwise → random
+        task_name = kwargs.get("task_name", None)
+        if task_name:
+            matched = next((t for t in TASKS if t["name"] == task_name), None)
+            self._task = matched.copy() if matched else random.choice(TASKS).copy()
+        elif seed is not None:
+            random.seed(seed)
+            self._task = random.choice(TASKS).copy()
+            random.seed(None)  # reset seed so other randomness is unaffected
+        else:
+            self._task = random.choice(TASKS).copy()
+
         return self._get_obs(reward=None, done=False)
 
     # ─────────────────────────────────────────
@@ -171,7 +187,7 @@ class EdaOpenenvEnvironment(Environment[EdaOpenenvAction, EdaOpenenvObservation,
 
     def _compute_reward(self, action: EdaOpenenvAction) -> Reward:
         if action.action_type in self.history:
-            return Reward(score=0.1, feedback="Repeated action.", is_penalty=True)
+            return Reward(score=0.0500, feedback="Repeated action.", is_penalty=True)
 
         expected = TASK_ACTION_MAP.get(self._task["name"])
         if action.action_type == expected:
@@ -181,13 +197,13 @@ class EdaOpenenvEnvironment(Environment[EdaOpenenvAction, EdaOpenenvObservation,
                 history=self.history + [action.action_type],
                 result=None,
             )
-            if grade >= 1.0:
+            if grade >= 0.9999:
                 self._done = True
-                return Reward(score=1.0, feedback=f"Task complete! {feedback}", is_penalty=False)
-            return Reward(score=round(grade, 4), feedback=feedback, is_penalty=False)
+                return Reward(score=0.9999, feedback=f"Task complete! {feedback}", is_penalty=False)
+            return Reward(score=round(max(0.0001, min(0.9999, grade)), 4), feedback=feedback, is_penalty=False)
 
         return Reward(
-            score=0.2,
+            score=0.1500,
             feedback=f"'{action.action_type}' valid but not relevant to task '{self._task['name']}'.",
             is_penalty=False,
         )
