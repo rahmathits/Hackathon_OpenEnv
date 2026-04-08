@@ -184,10 +184,17 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
         if done or step >= env.max_steps:
             break
 
+    # Normalise total_reward to strictly (0, 1) for validator
+    # Divide by max possible reward (number of steps * max step reward)
+    max_possible = step * 0.9999 if step > 0 else 1
+    normalised_score = total_reward / max_possible if max_possible > 0 else 0.5
+    # Clamp strictly between 0 and 1 exclusive
+    normalised_score = round(max(0.0001, min(0.9999, normalised_score)), 4)
+
     # Print [END] block — required by validator
     print(f"[END]")
     print(f"task={env._task['name']}")
-    print(f"total_reward={round(total_reward, 4)}")
+    print(f"total_reward={normalised_score}")
     print(f"steps={step}")
     print(f"[/END]")
 
@@ -196,11 +203,12 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
         print(f"  Finished | steps={step} | total_reward={total_reward:.4f}")
 
     return {
-        "task":         env._task["name"],
-        "difficulty":   env._task["difficulty"],
-        "steps":        step,
-        "total_reward": round(total_reward, 4),
-        "history":      [h["action"] for h in history],
+        "task":             env._task["name"],
+        "difficulty":       env._task["difficulty"],
+        "steps":            step,
+        "total_reward":     round(total_reward, 4),
+        "normalised_score": normalised_score,
+        "history":          [h["action"] for h in history],
         "penalties":    sum(1 for h in history if h["is_penalty"]),
     }
 
@@ -247,8 +255,9 @@ def main() -> None:
                 print(f"\n  Episode {ep+1}/{args.episodes}")
             result = run_episode(env, agent, task_override=task, verbose=not args.quiet)
             task_results.append(result)
-        avg = sum(r["total_reward"] for r in task_results) / len(task_results)
-        all_results.append({**task_results[-1], "avg_reward": round(avg, 4)})
+        avg = sum(r["normalised_score"] for r in task_results) / len(task_results)
+        avg = round(max(0.0001, min(0.9999, avg)), 4)
+        all_results.append({**task_results[-1], "avg_reward": avg})
 
     print(f"\n{'═'*60}")
     print("  BASELINE SCORE SUMMARY")
