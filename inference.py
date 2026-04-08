@@ -126,6 +126,13 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
     total_reward = 0.0
     step         = 0
 
+    # Print [START] block — required by validator
+    print(f"[START]")
+    print(f"task={obs.task}")
+    print(f"objective={obs.objective}")
+    print(f"difficulty={obs.difficulty}")
+    print(f"[/START]")
+
     if verbose:
         print(f"\n{'─'*60}")
         print(f"  Task      : {obs.task}")
@@ -156,6 +163,14 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
                 print(f"         reason  : {reason}")
                 print(f"         feedback: {reward.feedback}")
 
+        # Print [STEP] block — required by validator
+        print(f"[STEP]")
+        print(f"action={action_type}")
+        print(f"reward={reward.score:.4f}")
+        print(f"is_penalty={penalty is not None}")
+        print(f"done={done}")
+        print(f"[/STEP]")
+
         history.append({
             "action":     action_type,
             "reward":     reward.score,
@@ -166,12 +181,15 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
         total_reward += reward.score
         step         += 1
 
-        # Update obs for next select_action call
-        if penalty is None:
-            pass  # obs already updated from env.step()
-
         if done or step >= env.max_steps:
             break
+
+    # Print [END] block — required by validator
+    print(f"[END]")
+    print(f"task={env._task['name']}")
+    print(f"total_reward={round(total_reward, 4)}")
+    print(f"steps={step}")
+    print(f"[/END]")
 
     if verbose:
         print(f"{'─'*60}")
