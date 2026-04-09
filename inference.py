@@ -184,20 +184,22 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
         if done or step >= env.max_steps:
             break
 
-    # Normalise total_reward to strictly (0, 1) for validator
-    # Use sigmoid-like scaling to guarantee strict bounds
+    # Normalise total_reward strictly between 0.02 and 0.98
+    # Using 0.02-0.98 range to avoid float precision issues where
+    # 0.01 can print as 0.00 and 0.99 can print as 1.00
     if total_reward <= 0:
-        normalised_score = 0.1000
+        normalised_score = 0.02
     else:
-        max_possible = step * 0.9999 if step > 0 else 1
+        max_possible = step * 0.98 if step > 0 else 1
         raw = total_reward / max_possible
-        # Clamp strictly — never touch 0.0 or 1.0
-        normalised_score = round(max(0.1000, min(0.9000, raw)), 4)
+        normalised_score = max(0.02, min(0.98, raw))
+    # Round to 4 decimal places to avoid float representation issues
+    normalised_score = round(normalised_score, 4)
 
     # Print [END] block — required by validator
     print(f"[END]")
     print(f"task={env._task['name']}")
-    print(f"total_reward={normalised_score}")
+    print(f"total_reward={normalised_score:.4f}")
     print(f"steps={step}")
     print(f"[/END]")
 

@@ -173,9 +173,9 @@ class EdaOpenenvEnvironment(Environment[EdaOpenenvAction, EdaOpenenvObservation,
     # INTERNAL HELPERS
     # ─────────────────────────────────────────
     def _get_obs(self, reward: float = None, done: bool = False) -> EdaOpenenvObservation:
-        # Clamp reward strictly between 0 and 1 exclusive if provided
+        # Clamp reward strictly between 0.02 and 0.98 to avoid float precision issues
         if reward is not None:
-            reward = round(max(0.0001, min(0.9999, reward)), 4)
+            reward = round(max(0.02, min(0.98, reward)), 4)
         return EdaOpenenvObservation(
             done=done,
             reward=reward,
@@ -190,7 +190,7 @@ class EdaOpenenvEnvironment(Environment[EdaOpenenvAction, EdaOpenenvObservation,
 
     def _compute_reward(self, action: EdaOpenenvAction) -> Reward:
         if action.action_type in self.history:
-            return Reward(score=0.0500, feedback="Repeated action.", is_penalty=True)
+            return Reward(score=0.05, feedback="Repeated action.", is_penalty=True)
 
         expected = TASK_ACTION_MAP.get(self._task["name"])
         if action.action_type == expected:
@@ -200,13 +200,13 @@ class EdaOpenenvEnvironment(Environment[EdaOpenenvAction, EdaOpenenvObservation,
                 history=self.history + [action.action_type],
                 result=None,
             )
-            if grade >= 0.9999:
+            if grade >= 0.98:
                 self._done = True
-                return Reward(score=0.9999, feedback=f"Task complete! {feedback}", is_penalty=False)
-            return Reward(score=round(max(0.0001, min(0.9999, grade)), 4), feedback=feedback, is_penalty=False)
+                return Reward(score=0.98, feedback=f"Task complete! {feedback}", is_penalty=False)
+            return Reward(score=round(max(0.02, min(0.98, grade)), 4), feedback=feedback, is_penalty=False)
 
         return Reward(
-            score=0.1500,
+            score=0.15,
             feedback=f"'{action.action_type}' valid but not relevant to task '{self._task['name']}'.",
             is_penalty=False,
         )

@@ -14,8 +14,8 @@ from typing import Any
 
 
 def _strict(value: float) -> float:
-    """Ensure score is strictly between 0.0 and 1.0 exclusive."""
-    return round(max(0.0001, min(0.9999, value)), 4)
+    """Ensure score is strictly between 0.02 and 0.98 to avoid float precision issues."""
+    return round(max(0.02, min(0.98, value)), 4)
 
 
 def grade_task(task_name: str, df: pd.DataFrame, history: list, result: Any) -> tuple[float, str]:
@@ -26,13 +26,13 @@ def grade_task(task_name: str, df: pd.DataFrame, history: list, result: Any) -> 
     }
     grader = graders.get(task_name)
     if grader is None:
-        return 0.0001, f"Unknown task: '{task_name}'"
+        return 0.02, f"Unknown task: '{task_name}'"
     return grader(df, history, result)
 
 
 def _grade_detect_missing(df: pd.DataFrame, history: list, result: Any) -> tuple[float, str]:
     if "missing" not in history:
-        return 0.0001, "Agent never ran 'missing' action."
+        return 0.02, "Agent never ran 'missing' action."
 
     actual_missing    = df.isnull().sum().sum()
     total_cols        = len(df.columns)
@@ -52,12 +52,12 @@ def _grade_detect_missing(df: pd.DataFrame, history: list, result: Any) -> tuple
 
 def _grade_find_correlation(df: pd.DataFrame, history: list, result: Any) -> tuple[float, str]:
     if "correlation" not in history:
-        return 0.0001, "Agent never ran 'correlation' action."
+        return 0.02, "Agent never ran 'correlation' action."
 
     try:
         numeric_df  = df.select_dtypes(include="number")
         if len(numeric_df.columns) < 2:
-            return 0.1000, "Not enough numeric columns for correlation."
+            return 0.10, "Not enough numeric columns for correlation."
 
         corr_matrix = numeric_df.corr(numeric_only=True).abs()
         for col in corr_matrix.columns:
@@ -65,7 +65,7 @@ def _grade_find_correlation(df: pd.DataFrame, history: list, result: Any) -> tup
         max_corr = float(corr_matrix.max().max())
 
     except Exception as e:
-        return 0.1000, f"Correlation computation failed: {e}"
+        return 0.10, f"Correlation computation failed: {e}"
 
     if max_corr >= 0.9:
         score, note = 0.9500, "very strong correlation found"
@@ -83,10 +83,10 @@ def _grade_find_correlation(df: pd.DataFrame, history: list, result: Any) -> tup
 
 def _grade_generate_insight(df: pd.DataFrame, history: list, result: Any) -> tuple[float, str]:
     if "insight" not in history:
-        return 0.0001, "Agent never ran 'insight' action."
+        return 0.02, "Agent never ran 'insight' action."
 
     if not isinstance(result, str) or len(result.strip()) == 0:
-        return 0.0001, "Insight result is empty or not a string."
+        return 0.02, "Insight result is empty or not a string."
 
     text  = result.strip()
     score = 0.0
