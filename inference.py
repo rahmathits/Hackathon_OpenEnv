@@ -178,23 +178,14 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
             "is_penalty": penalty is not None,
             "done":       done,
         })
-        total_reward += reward.score
+        total_reward = round(max(0.02, min(0.98, total_reward + reward.score)), 4)
         step         += 1
 
         if done or step >= env.max_steps:
             break
 
-    # Normalise total_reward strictly between 0.02 and 0.98
-    # Using 0.02-0.98 range to avoid float precision issues where
-    # 0.01 can print as 0.00 and 0.99 can print as 1.00
-    if total_reward <= 0:
-        normalised_score = 0.02
-    else:
-        max_possible = step * 0.98 if step > 0 else 1
-        raw = total_reward / max_possible
-        normalised_score = max(0.02, min(0.98, raw))
-    # Round to 4 decimal places to avoid float representation issues
-    normalised_score = round(normalised_score, 4)
+    # total_reward is already clamped to [0.02, 0.98] during accumulation
+    normalised_score = total_reward
 
     # Print [END] block — required by validator
     print(f"[END]")

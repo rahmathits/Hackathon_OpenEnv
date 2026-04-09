@@ -132,7 +132,7 @@ class EdaOpenenvEnvironment(Environment[EdaOpenenvAction, EdaOpenenvObservation,
             "done":       self._done,
         })
         self._steps            += 1
-        self.cumulative_reward  = round(self.cumulative_reward + reward_obj.score, 4)
+        self.cumulative_reward  = round(max(0.02, min(0.98, self.cumulative_reward + reward_obj.score)), 4)
 
         if self._steps >= self.max_steps:
             self._done = True
