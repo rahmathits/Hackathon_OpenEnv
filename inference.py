@@ -20,7 +20,7 @@ import argparse
 import pandas as pd
 from openai import OpenAI
 
-from server.EDA_OpenEnv_environment import EdaOpenenvEnvironment as EDAEnv, TASKS, TASK_ACTION_MAP
+from server.EDA_OpenEnv_environment import EdaOpenenvEnvironment as EDAEnv, TASKS, TASK_ACTION_MAP, TASK_ACTION_MAP
 from models import EdaOpenenvAction as Action
 from pipeline import validate_action, apply_order_bonus, PIPELINE, get_completed_actions
 
@@ -96,8 +96,13 @@ What is the single best action to take next?"""
             raw = completion.choices[0].message.content or ""
         except Exception as exc:
             print(f"  [warn] Model request failed: {exc}. Using pipeline fallback.")
-            # Fallback: just follow the pipeline in order
-            return next_pipeline_step if next_pipeline_step != "pipeline complete" else "missing", "fallback — API unavailable"
+            # Fallback: follow pipeline in order, then run task-specific action
+            if next_pipeline_step != "pipeline complete":
+                return next_pipeline_step, "fallback — API unavailable"
+            else:
+                # Pipeline done — run task-specific action
+                task_action = TASK_ACTION_MAP.get(obs.task, "missing")
+                return task_action, "fallback — task-specific action"
 
         try:
             clean  = re.sub(r"```json|```", "", raw).strip()
@@ -105,10 +110,10 @@ What is the single best action to take next?"""
             action = parsed.get("action", "").strip()
             reason = parsed.get("reason", "")
             if action not in VALID_ACTIONS:
-                action = next_pipeline_step if next_pipeline_step != "pipeline complete" else "eda"
+                action = next_pipeline_step if next_pipeline_step != "pipeline complete" else TASK_ACTION_MAP.get(obs.task, "missing")
                 reason = "fallback — invalid action"
         except json.JSONDecodeError:
-            action = next_pipeline_step if next_pipeline_step != "pipeline complete" else "eda"
+            action = next_pipeline_step if next_pipeline_step != "pipeline complete" else TASK_ACTION_MAP.get(obs.task, "missing")
             reason = "fallback — JSON parse error"
 
         return action, reason
