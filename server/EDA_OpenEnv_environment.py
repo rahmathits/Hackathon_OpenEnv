@@ -85,7 +85,7 @@ class EdaOpenenvEnvironment(Environment[EdaOpenenvAction, EdaOpenenvObservation,
         else:
             self._task = random.choice(TASKS).copy()
 
-        return self._get_obs(reward=None, done=False)
+        return self._get_obs(reward=0.5, done=False)
 
     # ─────────────────────────────────────────
     # STEP
@@ -106,19 +106,19 @@ class EdaOpenenvEnvironment(Environment[EdaOpenenvAction, EdaOpenenvObservation,
             )
             action = EdaOpenenvAction(action_type=action_type)
         if self._done:
-            return self._get_obs(reward=0.0, done=True)
+            return self._get_obs(reward=0.5, done=True)
 
         # Pipeline ordering check
         penalty = validate_action(action.action_type, self.step_history)
         if penalty:
             self.step_history.append({
                 "action":     action.action_type,
-                "reward":     penalty.score,
+                "reward":     max(0.05, penalty.score),
                 "is_penalty": True,
                 "done":       False,
             })
             self._steps += 1
-            return self._get_obs(reward=penalty.score, done=False)
+            return self._get_obs(reward=max(0.05, penalty.score), done=False)
 
         # Compute reward
         reward_obj = self._compute_reward(action)
