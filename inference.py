@@ -114,6 +114,15 @@ What is the single best action to take next?"""
         return action, reason
 
 
+def _safe_score(value) -> float:
+    """Convert any value to a float strictly between 0.02 and 0.98."""
+    try:
+        f = float(value) if value is not None else 0.5
+    except (TypeError, ValueError):
+        f = 0.5
+    return round(max(0.02, min(0.98, f)), 4)
+
+
 def run_episode(env, agent, task_override=None, verbose=True) -> dict:
     obs = env.reset()
     if task_override:
@@ -123,7 +132,7 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
     from models import Reward
 
     history      = []
-    total_reward = 0.0
+    total_reward = 0.5   # start at midpoint — never 0.0
     step         = 0
 
     # Print [START] block — required by validator
@@ -145,17 +154,25 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
 
         penalty = validate_action(action_type, history)
         if penalty:
-            reward = penalty
-            done   = False
+            raw_score = _safe_score(penalty.score)
+            reward    = Reward(score=raw_score, feedback=penalty.feedback, is_penalty=True)
+            done      = False
             if verbose:
-                print(f"  Step {step+1:02d} | {action_type:<22} | score={reward.score:.4f} | ⚠️  {reward.feedback}")
+                print(f"  Step {step+1:02d} | {action_type:<22} | score={raw_score:.4f} | ⚠️  {reward.feedback}")
         else:
-            action = Action(action_type=action_type)
-            obs    = env.step(action)
-            done   = obs.done
-            reward = apply_order_bonus(
+            action    = Action(action_type=action_type)
+            obs       = env.step(action)
+            done      = obs.done
+            raw_score = _safe_score(obs.reward)
+            reward    = apply_order_bonus(
                 action_type, history,
-                Reward(score=obs.reward or 0.0, feedback="", is_penalty=False)
+                Reward(score=raw_score, feedback="", is_penalty=False)
+            )
+            # Re-clamp after bonus is applied
+            reward = Reward(
+                score=_safe_score(reward.score),
+                feedback=reward.feedback,
+                is_penalty=False
             )
             if verbose:
                 status = "✅ DONE" if done else "▶️ "
@@ -164,48 +181,50 @@ def run_episode(env, agent, task_override=None, verbose=True) -> dict:
                 print(f"         feedback: {reward.feedback}")
 
         # Print [STEP] block — required by validator
+        step_score = _safe_score(reward.score)
         print(f"[STEP]")
         print(f"action={action_type}")
-        print(f"reward={reward.score:.4f}")
+        print(f"reward={step_score:.4f}")
         print(f"is_penalty={penalty is not None}")
         print(f"done={done}")
         print(f"[/STEP]")
 
         history.append({
             "action":     action_type,
-            "reward":     reward.score,
+            "reward":     step_score,
             "feedback":   reward.feedback,
             "is_penalty": penalty is not None,
             "done":       done,
         })
-        total_reward = round(max(0.02, min(0.98, total_reward + reward.score)), 4)
-        step         += 1
+
+        # Running average — stays between 0.02 and 0.98
+        total_reward = _safe_score((total_reward + step_score) / 2)
+        step        += 1
 
         if done or step >= env.max_steps:
             break
 
-    # total_reward is already clamped to [0.02, 0.98] during accumulation
-    normalised_score = total_reward
+    final_score = _safe_score(total_reward)
 
     # Print [END] block — required by validator
     print(f"[END]")
     print(f"task={env._task['name']}")
-    print(f"total_reward={normalised_score:.4f}")
+    print(f"total_reward={final_score:.4f}")
     print(f"steps={step}")
     print(f"[/END]")
 
     if verbose:
         print(f"{'─'*60}")
-        print(f"  Finished | steps={step} | total_reward={total_reward:.4f}")
+        print(f"  Finished | steps={step} | total_reward={final_score:.4f}")
 
     return {
         "task":             env._task["name"],
         "difficulty":       env._task["difficulty"],
         "steps":            step,
-        "total_reward":     round(total_reward, 4),
-        "normalised_score": normalised_score,
+        "total_reward":     final_score,
+        "normalised_score": final_score,
         "history":          [h["action"] for h in history],
-        "penalties":    sum(1 for h in history if h["is_penalty"]),
+        "penalties":        sum(1 for h in history if h["is_penalty"]),
     }
 
 
