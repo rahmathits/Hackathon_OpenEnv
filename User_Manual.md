@@ -17,12 +17,14 @@ tags:
 
 **A real-world Reinforcement Learning environment where AI agents learn to perform Exploratory Data Analysis**
 
-[![OpenEnv](https://img.shields.io/badge/OpenEnv-Compatible-blue)](https://openenv.dev)
-[![Python](https://img.shields.io/badge/Python-3.11+-green)](https://python.org)
+[![OpenEnv](https://img.shields.io/badge/OpenEnv-Validated-brightgreen)](https://openenv.dev)
+[![Python](https://img.shields.io/badge/Python-3.11+-blue)](https://python.org)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue)](https://docker.com)
+[![Phase 1](https://img.shields.io/badge/Phase%201-PASSED-brightgreen)]()
+[![Phase 2](https://img.shields.io/badge/Phase%202-PASSED-brightgreen)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-[🚀 Try the Live Demo](https://rahmath1-eda-openenv.hf.space/web/) • [📖 API Docs](https://rahmath1-eda-openenv.hf.space/docs) • [💻 GitHub](https://github.com/rahmathits/OpenEn-Hackathon)
+[🚀 Try the Live Demo](https://rahmath1-eda-openenv.hf.space/web/) • [📖 API Docs](https://rahmath1-eda-openenv.hf.space/docs) • [💻 GitHub](https://github.com/rahmathits/Hackathon_OpenEnv)
 
 </div>
 
@@ -38,7 +40,7 @@ It models a **real data science workflow** that people actually do every day:
 Clean your data → Explore it → Engineer features → Train a model
 ```
 
-An AI agent learns to complete these steps in the right order, on a real CSV dataset, and gets rewarded based on the actual quality of its work — not just whether it pressed the right button.
+An AI agent learns to complete these steps **in the right order**, on a real CSV dataset, and gets rewarded based on the **actual quality** of its work — not just whether it pressed the right button.
 
 > **Think of it as**: a gym environment, but instead of playing Atari, the agent is doing data science.
 
@@ -49,25 +51,25 @@ An AI agent learns to complete these steps in the right order, on a real CSV dat
 | Feature | Description |
 |---|---|
 | 🌍 **Real-world tasks** | Agent works on actual tabular CSV data, not synthetic grids |
-| 🏆 **Dynamic grading** | Rewards based on actual data quality — no fixed scores |
+| 🏆 **Dynamic grading** | Rewards based on actual data quality — deterministic and reproducible |
 | 🔢 **Pipeline enforcement** | Agent must follow the correct order or get penalised |
+| 🔁 **Reproducible** | Same task + same seed + same actions = same score every time |
 | 🔌 **OpenEnv standard** | Works with any agent via `reset()` / `step()` / `state()` |
 | 🌐 **Web UI** | Built-in browser interface to test the environment live |
 | 🐳 **Docker ready** | One command to run anywhere |
+| ✅ **Fully validated** | Phase 1 + Phase 2 passed — officially in the running |
 
 ---
 
 ## 🎮 Try it in 30 seconds
 
-The easiest way to try the environment is through the **live web interface**:
-
 1. Open [https://rahmath1-eda-openenv.hf.space/web/](https://rahmath1-eda-openenv.hf.space/web/)
 2. Click **Reset** to start a new episode
-3. Type an action like `clean_data` in the Action Type field
+3. Type `clean_data` in the Action Type field
 4. Click **Step** and watch the reward come back
-5. Follow the pipeline all the way to `train_model`
+5. Follow the pipeline all the way through
 
-That's it — no installation needed!
+No installation needed!
 
 ---
 
@@ -81,10 +83,10 @@ The agent must complete actions in this exact order:
 └─────────────┘    └─────┘    └─────────────────────┘    └─────────────┘
                                                                   ↓
                                                         Task-specific action
-                                                     (missing / correlation / insight)
+                                                   (missing / correlation / insight)
 ```
 
-**Skip a step? You get penalised.** Follow the order? You get rewarded. Simple, but surprisingly challenging for an agent to learn.
+**Skip a step? You get penalised. Follow the order? You get rewarded.**
 
 ---
 
@@ -95,163 +97,160 @@ Each episode assigns the agent one of three tasks with increasing difficulty:
 ### 🟢 Easy — Detect Missing Values
 > *"Find all columns in the dataset that have missing values"*
 
-The agent needs to run `clean_data` → `eda` → `feature_engineering` → `train_model` → `missing`
+Run the pipeline then execute: `missing`
 
-Graded on: how many columns with missing values were identified vs. total columns
+Graded on: proportion of columns with missing values identified vs. total columns
 
-### 🟡 Medium — Find Correlation  
+### 🟡 Medium — Find Correlation
 > *"Find the strongest correlation between any two numeric columns"*
 
-The agent needs to run the pipeline then execute `correlation`
+Run the pipeline then execute: `correlation`
 
-Graded on: strength of the maximum correlation found (`0.9+` = perfect score)
+Graded on fixed thresholds:
+`≥ 0.9` → **0.95** · `≥ 0.7` → **0.75** · `≥ 0.5` → **0.55** · `≥ 0.3` → **0.35** · `< 0.3` → **0.15**
 
 ### 🔴 Hard — Generate Insight
 > *"Generate a meaningful insight about the dataset referencing actual values"*
 
-The agent needs to run the pipeline then execute `insight`
+Run the pipeline then execute: `insight`
 
-Graded on: text length, numeric references, and column name mentions
+Graded on three deterministic sub-scores:
+- **Text length** (up to +0.40) — min viable = 30 chars, full credit at 200+
+- **Numeric references** (up to +0.30) — how many actual data values are mentioned
+- **Column name mentions** (up to +0.30) — how many real column names appear
 
 ---
 
 ## 🏆 Reward System
 
-All rewards are bounded between **0 and 1**:
+All rewards are strictly between **0.02 and 0.98** — never exactly 0 or 1:
 
 ```
-✅ Correct pipeline order (first time):
-   clean_data          →  +0.25
-   eda                 →  +0.50
-   feature_engineering →  +0.75
-   train_model         →  +1.00
+✅ Correct pipeline order (deterministic):
+   clean_data           →  0.25
+   eda                  →  0.50
+   feature_engineering  →  0.75
+   train_model          →  0.95
 
 📊 Task-specific action:
-   Scored dynamically by grader (0.0 → 1.0)
+   Scored by dynamic grader (0.02 → 0.98), deterministic
 
-⚠️  Out-of-order action:
-   Skip 1 step  →  -0.25
-   Skip 2 steps →  -0.50
-   Skip 3 steps →  -0.75
+⚠️  Out-of-order action (deterministic penalty):
+   Skip 1 step   →  -0.25
+   Skip 2 steps  →  -0.50
+   Skip 3 steps  →  -0.75
 
-🔁 Repeated action:
-   →  0.10 (small penalty)
+🔁 Repeated action  →  0.05 (small penalty)
+🎯 Wrong action     →  0.15 (valid but irrelevant)
 ```
+
+### Reproducibility Guarantee
+- Same DataFrame + same actions = **same score, always**
+- `reset(seed=42)` always picks the same task for that seed
+- `reset(task_name="detect_missing")` always sets that exact task
+- No randomness in graders — pure math on actual data quality
 
 ---
 
 ## 🔌 Connect Your Own Agent
 
-Any Python agent can connect to this environment in just a few lines:
-
-### Option 1 — Connect to the live HF Space
-
-```python
-from eda_openenv_client import EDAOpenEnv, EDAAction
-
-EDA_ENV_URL = "https://rahmath1-eda-openenv.hf.space"
-
-with EDAOpenEnv(base_url=EDA_ENV_URL) as env:
-    result = env.reset()
-
-    print(f"Task: {result.observation['task']}")
-    print(f"Objective: {result.observation['objective']}")
-
-    # Run the pipeline in order
-    for action in ["clean_data", "eda", "feature_engineering", "train_model"]:
-        if result.done:
-            break
-        result = env.step(EDAAction(action_type=action))
-        print(f"{action:25} → reward={result.reward:.2f} | done={result.done}")
-```
-
-### Option 2 — Run locally with Docker
-
-```bash
-# Pull and run
-docker run -p 8000:8000 rahmath1/eda-openenv:latest
-
-# Then connect
-env = EDAOpenEnv(base_url="http://localhost:8000")
-```
-
-### Option 3 — Use the HTTP API directly
+### Option 1 — HTTP API (simplest)
 
 ```bash
 # Start a new episode
-curl -X POST http://localhost:8000/reset \
+curl -X POST https://rahmath1-eda-openenv.hf.space/reset \
   -H "Content-Type: application/json" -d "{}"
 
 # Take a step
-curl -X POST http://localhost:8000/step \
+curl -X POST https://rahmath1-eda-openenv.hf.space/step \
   -H "Content-Type: application/json" \
   -d '{"action": {"action_type": "clean_data"}}'
 
-# Check state
-curl http://localhost:8000/state
+# Start with specific task (deterministic)
+curl -X POST https://rahmath1-eda-openenv.hf.space/reset \
+  -H "Content-Type: application/json" \
+  -d '{"task_name": "detect_missing"}'
+
+# Start with seed (reproducible)
+curl -X POST https://rahmath1-eda-openenv.hf.space/reset \
+  -H "Content-Type: application/json" \
+  -d '{"seed": 42}'
+```
+
+### Option 2 — Python client
+
+```python
+from client import EdaOpenenvEnv
+from models import EdaOpenenvAction
+
+with EdaOpenenvEnv(base_url="https://rahmath1-eda-openenv.hf.space") as env:
+    result = env.reset()
+    print(f"Task: {result.observation.task}")
+
+    for action in ["clean_data", "eda", "feature_engineering", "train_model", "missing"]:
+        if result.done:
+            break
+        result = env.step(EdaOpenenvAction(action_type=action))
+        print(f"{action:25} → reward={result.reward:.4f}")
+```
+
+### Option 3 — Run locally with Docker
+
+```bash
+docker build -t eda-openenv .
+docker run -p 8000:8000 eda-openenv
+# Open http://localhost:8000/web/
 ```
 
 ---
 
 ## 🤖 Run the LLM Baseline Agent
 
-The baseline agent uses an LLM (via HuggingFace router) to decide which action to take at each step:
+Uses an LLM via HuggingFace router, runs all 3 tasks, outputs structured results:
 
 ```bash
-# Set your credentials
 export API_BASE_URL="https://router.huggingface.co/v1"
 export MODEL_NAME="Qwen/Qwen2.5-72B-Instruct"
 export HF_TOKEN="hf_..."
 
-# Run across all 3 tasks
-python inference.py --csv your_data.csv
-
-# Run with more episodes for stable average
-python inference.py --csv your_data.csv --episodes 3 --steps 10
+python inference.py                          # uses built-in sample dataset
+python inference.py --csv your_data.csv      # use your own CSV
 ```
 
-**Example output:**
+**Structured stdout output (parsed by validator):**
 ```
-══ EDA OpenEnv — Inference Script ══════════════════════════
-  Dataset       : titanic.csv (891 rows × 12 cols)
-  Model         : Qwen/Qwen2.5-72B-Instruct
-
-══ Task: detect_missing  (difficulty: easy) ══════════════════
-  Step 01 | clean_data             | score=0.2500 | ✅
-  Step 02 | eda                    | score=0.5000 | ✅
-  Step 03 | feature_engineering    | score=0.7500 | ✅
-  Step 04 | train_model            | score=1.0000 | ✅
-  Step 05 | missing                | score=0.8750 | ✅ DONE
-
-══ BASELINE SCORE SUMMARY ════════════════════════════════════
-  Task                      Diff       Steps    Penalties  Avg Reward
-  ─────────────────────────────────────────────────────────────
-  detect_missing            easy       5        0          0.7750
-  find_correlation          medium     6        0          0.6800
-  generate_insight          hard       7        1          0.5200
-  ─────────────────────────────────────────────────────────────
-  BASELINE SCORE                                            0.6583
-══════════════════════════════════════════════════════════════
+[START] task=detect_missing env=eda_openenv model=Qwen/Qwen2.5-72B-Instruct
+[STEP] step=1 action=clean_data reward=0.25 done=false error=null
+[STEP] step=2 action=eda reward=0.50 done=false error=null
+[STEP] step=3 action=feature_engineering reward=0.75 done=false error=null
+[STEP] step=4 action=train_model reward=0.95 done=false error=null
+[STEP] step=5 action=missing reward=0.83 done=true error=null
+[END] success=true steps=5 score=0.656 rewards=0.25,0.50,0.75,0.95,0.83
 ```
+
+Results saved to `baseline_results.json`.
 
 ---
 
 ## 🚀 Local Setup
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/rahmathits/OpenEn-Hackathon.git
-cd OpenEn-Hackathon
+# Clone
+git clone https://github.com/rahmathits/Hackathon_OpenEnv.git
+cd Hackathon_OpenEnv
 
-# 2. Install dependencies
+# Install
 pip install -r requirements.txt
 
-# 3. Run with Docker (recommended)
+# Run server
+uvicorn server.app:app --host 0.0.0.0 --port 8000
+
+# Or Docker
 docker build -t eda-openenv .
 docker run -p 8000:8000 eda-openenv
 
-# 4. Open the web UI
-# Go to http://localhost:8000/web/
+# Open web UI
+# http://localhost:8000/web/
 ```
 
 ---
@@ -261,18 +260,20 @@ docker run -p 8000:8000 eda-openenv
 ```
 EDA_OpenEnv/
 │
-├── 📄 inference.py              # LLM baseline agent (mandatory for submission)
-├── 📄 pipeline.py               # Pipeline ordering rules & reward shaping
-├── 📄 models.py                 # Pydantic models (Action, Observation, Reward)
-├── 📄 grader.py                 # Dynamic task graders
-├── 📄 client.py                 # Python client SDK
-├── 📄 openenv.yaml              # OpenEnv spec configuration
-├── 📄 Dockerfile                # Container definition
-├── 📄 requirements.txt          # Python dependencies
+├── 📄 inference.py                  # LLM baseline agent — mandatory submission file
+├── 📄 pipeline.py                   # Pipeline ordering rules & deterministic rewards
+├── 📄 models.py                     # Pydantic models (Action, Observation, Reward)
+├── 📄 grader.py                     # Deterministic task graders
+├── 📄 client.py                     # Python client SDK
+├── 📄 openenv.yaml                  # OpenEnv spec configuration
+├── 📄 Dockerfile                    # Container definition
+├── 📄 requirements.txt              # Python dependencies
+├── 📄 pyproject.toml                # Package configuration
 │
 └── 📁 server/
-    ├── app.py                   # FastAPI server (auto-wired by openenv-core)
-    └── EDA_OpenEnv_environment.py  # Core environment logic
+    ├── __init__.py
+    ├── app.py                       # FastAPI server (openenv-core create_app)
+    └── EDA_OpenEnv_environment.py   # Core environment logic
 ```
 
 ---
@@ -281,24 +282,20 @@ EDA_OpenEnv/
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/reset` | POST | Start a new episode, get initial observation |
-| `/step` | POST | Take an action, get reward + next observation |
-| `/state` | GET | Inspect full environment state |
+| `/reset` | POST | Start a new episode |
+| `/step` | POST | Take an action |
+| `/state` | GET | Inspect environment state |
 | `/health` | GET | Liveness check |
 | `/schema` | GET | Action and observation schemas |
-| `/web/` | GET | Built-in web interface |
-| `/docs` | GET | Auto-generated API documentation |
+| `/web/` | GET | Built-in Gradio web interface |
+| `/docs` | GET | Auto-generated Swagger UI |
 
-**Step request format:**
+**Step request:**
 ```json
-{
-  "action": {
-    "action_type": "clean_data"
-  }
-}
+{ "action": { "action_type": "clean_data" } }
 ```
 
-**Step response format:**
+**Step response:**
 ```json
 {
   "observation": {
@@ -306,56 +303,23 @@ EDA_OpenEnv/
     "objective": "Identify all columns with missing values",
     "columns": ["age", "salary", "score"],
     "history": ["clean_data"],
-    "done": false,
-    "reward": 0.25
-  }
+    "done": false
+  },
+  "reward": 0.25,
+  "done": false
 }
-```
-
----
-
-## 📊 Evaluation Criteria
-
-This project was built for the **OpenEnv Hackathon** and addresses all five judging criteria:
-
-| Criterion | Weight | How we address it |
-|---|---|---|
-| 🌍 Real-world utility | 30% | Models a genuine EDA workflow on real CSV data |
-| 🎯 Task & grader quality | 25% | 3 tasks with difficulty progression; dynamic input-sensitive grading |
-| 🏗️ Environment design | 20% | Clean state management, shaped rewards in `[0,1]`, proper episode boundaries |
-| 💻 Code quality & spec | 15% | OpenEnv-compliant API, typed Pydantic models, Dockerfile, inference script |
-| 💡 Creativity & novelty | 10% | Pipeline ordering enforcement with graded penalties is an original mechanic |
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **[openenv-core](https://pypi.org/project/openenv-core/)** — OpenEnv framework (auto-generates HTTP endpoints)
+- **[openenv-core](https://pypi.org/project/openenv-core/)** — OpenEnv framework (auto-generates HTTP + WebSocket endpoints)
 - **FastAPI + Uvicorn** — API server
 - **Pydantic v2** — typed models
 - **Pandas / NumPy / Scikit-learn** — EDA tooling
-- **OpenAI SDK** — LLM baseline agent
-- **Docker** — containerised deployment
+- **OpenAI SDK** — LLM baseline agent (compatible with HF router)
 - **Gradio** — built-in web UI (via openenv-core)
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! If you want to:
-- Add new tasks
-- Improve the grader logic
-- Add new action types
-- Fix bugs
-
-Fork the repo, make your changes and open a pull request.
-
-```bash
-git fork https://github.com/rahmathits/OpenEn-Hackathon
-cd OpenEn-Hackathon
-# make your changes
-git pull-request
-```
+- **Docker** — containerised deployment
 
 ---
 
@@ -367,6 +331,6 @@ MIT — free to use, modify and distribute.
 
 <div align="center">
 
-Built with ❤️ for the OpenEnv Hackathon
+Built with ❤️ for the OpenEnv Hackathon • **Phase 1 ✅ Phase 2 ✅ Validated 🏆**
 
 </div>
