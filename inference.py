@@ -1,16 +1,15 @@
 """
 inference.py
-
+===================================
 MANDATORY environment variables:
-    API_BASE_URL   The API endpoint for the LLM
-    MODEL_NAME     The model identifier
-    HF_TOKEN       Your Hugging Face API key
+    API_BASE_URL     The API endpoint for the LLM
+    MODEL_NAME       The model identifier
+    HF_TOKEN         Your Hugging Face API key
 
-Usage:
-    set API_BASE_URL=https://router.huggingface.co/v1
-    set MODEL_NAME=Qwen/Qwen2.5-72B-Instruct
-    set HF_TOKEN=hf_...
-    python inference.py --csv data/sample.csv
+STDOUT FORMAT (single lines, flush=True):
+    [START] task=<task> env=eda_openenv model=<model>
+    [STEP]  step=<n> action=<action> reward=<0.00> done=<true|false> error=<msg|null>
+    [END]   success=<true|false> steps=<n> score=<0.000> rewards=<r1,r2,...>
 """
 
 import os
@@ -18,19 +17,25 @@ import re
 import json
 import argparse
 import pandas as pd
+from typing import List, Optional
 from openai import OpenAI
 
-from server.EDA_OpenEnv_environment import EdaOpenenvEnvironment as EDAEnv, TASKS, TASK_ACTION_MAP, TASK_ACTION_MAP
-from models import EdaOpenenvAction as Action
+from server.EDA_OpenEnv_environment import EdaOpenenvEnvironment as EDAEnv, TASKS, TASK_ACTION_MAP
+from models import EdaOpenenvAction as Action, Reward
 from pipeline import validate_action, apply_order_bonus, PIPELINE, get_completed_actions
 
+# ─────────────────────────────────────────
+# Config
+# ─────────────────────────────────────────
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 API_KEY      = os.getenv("HF_TOKEN") or os.getenv("API_KEY", "")
 MODEL_NAME   = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+BENCHMARK    = "eda_openenv"
 
-MAX_STEPS   = 10
-TEMPERATURE = 0.0
-MAX_TOKENS  = 100
+MAX_STEPS              = 10
+TEMPERATURE            = 0.0
+MAX_TOKENS             = 100
+SUCCESS_SCORE_THRESHOLD = 0.1
 
 VALID_ACTIONS = [
     "clean_data", "eda", "feature_engineering", "train_model",
@@ -40,13 +45,13 @@ VALID_ACTIONS = [
 SYSTEM_PROMPT = """You are an expert data science agent working inside an EDA environment.
 Select the single best action to take next.
 
-Pipeline order (must follow):
+Pipeline order (must follow in order):
 1. clean_data
 2. eda
 3. feature_engineering
 4. train_model
 
-Task-specific actions:
+Task-specific actions (run after pipeline):
 - detect_missing   → missing
 - find_correlation → correlation
 - generate_insight → insight
@@ -54,18 +59,45 @@ Task-specific actions:
 Respond ONLY with JSON: {"action": "<action_name>", "reason": "<one sentence>"}"""
 
 
+# ─────────────────────────────────────────
+# Logging — single-line format, flush=True
+# ─────────────────────────────────────────
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+    error_val = error if error else "null"
+    done_val  = str(done).lower()
+    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
+
+
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
+
+
+def _safe_score(value) -> float:
+    """Convert any value to float strictly between 0.02 and 0.98."""
+    try:
+        f = float(value) if value is not None else 0.5
+    except (TypeError, ValueError):
+        f = 0.5
+    return round(max(0.02, min(0.98, f)), 4)
+
+
+# ─────────────────────────────────────────
+# LLM Agent
+# ─────────────────────────────────────────
 class LLMAgent:
 
     def __init__(self):
         if not API_KEY:
-            print("  [warn] HF_TOKEN not set — API calls may fail. Set HF_TOKEN=hf_...")
+            print("  [warn] HF_TOKEN not set — API calls may fail.", flush=True)
         if not MODEL_NAME:
-            print("  [warn] MODEL_NAME not set — using default Qwen/Qwen2.5-72B-Instruct")
-
+            print("  [warn] MODEL_NAME not set — using default.", flush=True)
         self.client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "dummy")
         self.model  = MODEL_NAME or "Qwen/Qwen2.5-72B-Instruct"
-        print(f"  API Base : {API_BASE_URL}")
-        print(f"  Model    : {self.model}")
 
     def select_action(self, obs, history: list) -> tuple[str, str]:
         completed          = get_completed_actions(history)
@@ -95,14 +127,11 @@ What is the single best action to take next?"""
             )
             raw = completion.choices[0].message.content or ""
         except Exception as exc:
-            print(f"  [warn] Model request failed: {exc}. Using pipeline fallback.")
-            # Fallback: follow pipeline in order, then run task-specific action
+            print(f"[DEBUG] Model request failed: {exc}", flush=True)
+            # Fallback: follow pipeline then task-specific action
             if next_pipeline_step != "pipeline complete":
-                return next_pipeline_step, "fallback — API unavailable"
-            else:
-                # Pipeline done — run task-specific action
-                task_action = TASK_ACTION_MAP.get(obs.task, "missing")
-                return task_action, "fallback — task-specific action"
+                return next_pipeline_step, "fallback"
+            return TASK_ACTION_MAP.get(obs.task, "missing"), "fallback — task action"
 
         try:
             clean  = re.sub(r"```json|```", "", raw).strip()
@@ -114,134 +143,101 @@ What is the single best action to take next?"""
                 reason = "fallback — invalid action"
         except json.JSONDecodeError:
             action = next_pipeline_step if next_pipeline_step != "pipeline complete" else TASK_ACTION_MAP.get(obs.task, "missing")
-            reason = "fallback — JSON parse error"
+            reason = "fallback — parse error"
 
         return action, reason
 
 
-def _safe_score(value) -> float:
-    """Convert any value to a float strictly between 0.02 and 0.98."""
-    try:
-        f = float(value) if value is not None else 0.5
-    except (TypeError, ValueError):
-        f = 0.5
-    return round(max(0.02, min(0.98, f)), 4)
-
-
-def run_episode(env, agent, task_override=None, verbose=True) -> dict:
+# ─────────────────────────────────────────
+# Episode runner
+# ─────────────────────────────────────────
+def run_episode(env: EDAEnv, agent: LLMAgent, task_override: dict = None) -> dict:
     obs = env.reset()
     if task_override:
         env._task = task_override.copy()
         obs = env._get_obs()
 
-    from models import Reward
+    task_name = obs.task
+    history   = []
+    rewards   = []
+    step      = 0
+    done      = False
+    success   = False
+    score     = 0.0
 
-    history      = []
-    total_reward = 0.5   # start at midpoint — never 0.0
-    step         = 0
+    log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
 
-    # Print [START] block — required by validator
-    print(f"[START]")
-    print(f"task={obs.task}")
-    print(f"objective={obs.objective}")
-    print(f"difficulty={obs.difficulty}")
-    print(f"[/START]")
+    try:
+        for step_num in range(1, MAX_STEPS + 1):
+            if done:
+                break
 
-    if verbose:
-        print(f"\n{'─'*60}")
-        print(f"  Task      : {obs.task}")
-        print(f"  Objective : {obs.objective}")
-        print(f"  Difficulty: {obs.difficulty}")
-        print(f"{'─'*60}")
+            action_type, reason = agent.select_action(obs, history)
 
-    while True:
-        action_type, reason = agent.select_action(obs, history)
+            # Pipeline validation
+            penalty = validate_action(action_type, history)
+            if penalty:
+                raw_reward = _safe_score(penalty.score)
+                error      = penalty.feedback
+            else:
+                action     = Action(action_type=action_type)
+                obs        = env.step(action)
+                done       = obs.done
+                r          = apply_order_bonus(
+                    action_type, history,
+                    Reward(score=_safe_score(obs.reward), feedback="", is_penalty=False)
+                )
+                raw_reward = _safe_score(r.score)
+                error      = None
 
-        penalty = validate_action(action_type, history)
-        if penalty:
-            raw_score = _safe_score(penalty.score)
-            reward    = Reward(score=raw_score, feedback=penalty.feedback, is_penalty=True)
-            done      = False
-            if verbose:
-                print(f"  Step {step+1:02d} | {action_type:<22} | score={raw_score:.4f} | ⚠️  {reward.feedback}")
+            rewards.append(raw_reward)
+            step = step_num
+
+            log_step(step=step_num, action=action_type, reward=raw_reward, done=done, error=error)
+
+            history.append({
+                "action":     action_type,
+                "reward":     raw_reward,
+                "is_penalty": penalty is not None,
+                "done":       done,
+            })
+
+        # Calculate final score — sum of rewards normalised to [0,1]
+        # Use average reward across steps so score is naturally in (0,1)
+        if rewards:
+            score = sum(rewards) / len(rewards)
         else:
-            action    = Action(action_type=action_type)
-            obs       = env.step(action)
-            done      = obs.done
-            raw_score = _safe_score(obs.reward)
-            reward    = apply_order_bonus(
-                action_type, history,
-                Reward(score=raw_score, feedback="", is_penalty=False)
-            )
-            # Re-clamp after bonus is applied
-            reward = Reward(
-                score=_safe_score(reward.score),
-                feedback=reward.feedback,
-                is_penalty=False
-            )
-            if verbose:
-                status = "✅ DONE" if done else "▶️ "
-                print(f"  Step {step+1:02d} | {action_type:<22} | score={reward.score:.4f} | {status}")
-                print(f"         reason  : {reason}")
-                print(f"         feedback: {reward.feedback}")
+            score = 0.5
 
-        # Print [STEP] block — required by validator
-        step_score = _safe_score(reward.score)
-        print(f"[STEP]")
-        print(f"action={action_type}")
-        print(f"reward={step_score:.4f}")
-        print(f"is_penalty={penalty is not None}")
-        print(f"done={done}")
-        print(f"[/STEP]")
+        # Clamp strictly between 0.02 and 0.98
+        score   = _safe_score(score)
+        success = score >= SUCCESS_SCORE_THRESHOLD
 
-        history.append({
-            "action":     action_type,
-            "reward":     step_score,
-            "feedback":   reward.feedback,
-            "is_penalty": penalty is not None,
-            "done":       done,
-        })
-
-        # Running average — stays between 0.02 and 0.98
-        total_reward = _safe_score((total_reward + step_score) / 2)
-        step        += 1
-
-        if done or step >= env.max_steps:
-            break
-
-    final_score = _safe_score(total_reward)
-
-    # Print [END] block — required by validator
-    print(f"[END]")
-    print(f"task={env._task['name']}")
-    print(f"total_reward={final_score:.4f}")
-    print(f"steps={step}")
-    print(f"[/END]")
-
-    if verbose:
-        print(f"{'─'*60}")
-        print(f"  Finished | steps={step} | total_reward={final_score:.4f}")
+    finally:
+        log_end(success=success, steps=step, score=score, rewards=rewards)
 
     return {
-        "task":             env._task["name"],
-        "difficulty":       env._task["difficulty"],
-        "steps":            step,
-        "total_reward":     final_score,
-        "normalised_score": final_score,
-        "history":          [h["action"] for h in history],
-        "penalties":        sum(1 for h in history if h["is_penalty"]),
+        "task":       task_name,
+        "difficulty": env._task["difficulty"],
+        "steps":      step,
+        "score":      score,
+        "success":    success,
+        "rewards":    rewards,
+        "penalties":  sum(1 for h in history if h["is_penalty"]),
     }
 
 
+# ─────────────────────────────────────────
+# Main — runs all 3 tasks
+# ─────────────────────────────────────────
 def main() -> None:
     parser = argparse.ArgumentParser(description="EDA OpenEnv — Inference Script")
-    parser.add_argument("--csv",      required=False, default=None, help="Path to CSV dataset (optional — uses built-in sample if not provided)")
-    parser.add_argument("--steps",    type=int, default=10, help="Max steps per episode")
-    parser.add_argument("--episodes", type=int, default=1,  help="Runs per task")
-    parser.add_argument("--quiet",    action="store_true",  help="Suppress per-step output")
+    parser.add_argument("--csv",      required=False, default=None, help="Path to CSV (optional)")
+    parser.add_argument("--steps",    type=int, default=10,         help="Max steps per episode")
+    parser.add_argument("--episodes", type=int, default=1,          help="Runs per task")
     args = parser.parse_args()
 
-    # Use provided CSV or fall back to built-in sample dataset
+    # Load dataset
     if args.csv:
         df           = pd.read_csv(args.csv)
         dataset_name = args.csv
@@ -255,47 +251,25 @@ def main() -> None:
         })
         dataset_name = "built-in sample dataset"
 
-    print(f"\n{'═'*60}")
-    print(f"  EDA OpenEnv — Inference Script")
-    print(f"{'═'*60}")
-    print(f"  Dataset       : {dataset_name} ({df.shape[0]} rows × {df.shape[1]} cols)")
-    print(f"  Episodes/task : {args.episodes}")
-
     env   = EDAEnv(df, max_steps=args.steps)
     agent = LLMAgent()
 
     all_results = []
     for task in TASKS:
-        task_results = []
-        print(f"\n{'═'*60}")
-        print(f"  Task: {task['name']}  (difficulty: {task['difficulty']})")
-        print(f"{'═'*60}")
         for ep in range(args.episodes):
-            if args.episodes > 1:
-                print(f"\n  Episode {ep+1}/{args.episodes}")
-            result = run_episode(env, agent, task_override=task, verbose=not args.quiet)
-            task_results.append(result)
-        avg = sum(r["normalised_score"] for r in task_results) / len(task_results)
-        avg = round(max(0.0001, min(0.9999, avg)), 4)
-        all_results.append({**task_results[-1], "avg_reward": avg})
+            result = run_episode(env, agent, task_override=task)
+            all_results.append(result)
 
-    print(f"\n{'═'*60}")
-    print("  BASELINE SCORE SUMMARY")
-    print(f"{'═'*60}")
-    print(f"  {'Task':<25} {'Diff':<10} {'Steps':<8} {'Penalties':<10} {'Avg Reward'}")
-    print(f"  {'─'*57}")
-    total = 0.0
-    for r in all_results:
-        print(f"  {r['task']:<25} {r['difficulty']:<10} {r['steps']:<8} {r['penalties']:<10} {r['avg_reward']:.4f}")
-        total += r["avg_reward"]
-    baseline = round(total / len(all_results), 4)
-    print(f"  {'─'*57}")
-    print(f"  {'BASELINE SCORE':<48} {baseline:.4f}")
-    print(f"{'═'*60}\n")
-
+    # Save results
+    baseline_score = sum(r["score"] for r in all_results) / len(all_results)
+    output = {
+        "model":          MODEL_NAME,
+        "dataset":        dataset_name,
+        "task_results":   all_results,
+        "baseline_score": round(baseline_score, 4),
+    }
     with open("baseline_results.json", "w") as f:
-        json.dump({"model": MODEL_NAME, "dataset": dataset_name, "task_results": all_results, "baseline_score": baseline}, f, indent=2)
-    print("Results saved → baseline_results.json\n")
+        json.dump(output, f, indent=2)
 
 
 if __name__ == "__main__":
